@@ -1,0 +1,5 @@
+{
+  "task": "Implement analyze_csv(csv_content: str) -> dict. The CSV has required columns id, name, email. Return total_rows, missing_required_fields, duplicate_ids, invalid_emails, and error. Follow tests/test_solution.py.",
+  "notes": "Preserve the existing test contract.",
+  "updated_at": "2026-10-24T13:26:55"
+}

@@ -1,0 +1,908 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import streamlit as st
+
+ROOT = Path(__file__).resolve().parent
+RUNS = ROOT / "runs"
+WORKSPACE = ROOT / "workspace"
+TESTS = ROOT / "tests"
+AGENT_FILE = ROOT / "agentlab.py"
+
+RUNS.mkdir(exist_ok=True)
+WORKSPACE.mkdir(exist_ok=True)
+
+# ------------------------------------------------------------
+# PAGE CONFIGURATION
+# ------------------------------------------------------------
+
+st.set_page_config(
+    page_title="AgentLab | AI Engineering Workspace",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ------------------------------------------------------------
+# DESIGN SYSTEM
+# ------------------------------------------------------------
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap');
+
+    :root {
+        --background: #0b0d12;
+        --panel: #12151d;
+        --border: #252a37;
+        --text: #f1f3f9;
+        --muted: #8e96aa;
+        --accent: #a3ffbf;
+        --blue: #a9c8ff;
+    }
+
+    .stApp {
+        background: var(--background);
+        color: var(--text);
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(11,13,18,0.92);
+    }
+
+    [data-testid="stSidebar"] {
+        background: #0e1118;
+        border-right: 1px solid var(--border);
+    }
+
+    [data-testid="stSidebar"] * {
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1500px;
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+    }
+
+    .brand-icon {
+        width: 43px;
+        height: 43px;
+        border-radius: 13px;
+        background: var(--accent);
+        color: #0b1510;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        font-weight: 800;
+    }
+
+    .brand-title {
+        font-size: 23px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: var(--text);
+    }
+
+    .brand-subtitle {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    }
+
+    .eyebrow {
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 2.5px;
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        margin-bottom: 12px;
+    }
+
+    .hero-title {
+        font-size: clamp(34px, 5vw, 52px);
+        font-weight: 800;
+        letter-spacing: -2.5px;
+        line-height: 1.06;
+        margin: 0 0 15px 0;
+        color: var(--text);
+    }
+
+    .hero-title span {
+        color: var(--accent);
+    }
+
+    .hero-copy {
+        color: var(--muted);
+        font-size: 15px;
+        max-width: 720px;
+        line-height: 1.8;
+        margin-bottom: 25px;
+    }
+
+    .section-label {
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-size: 11px;
+        font-weight: 700;
+        margin: 22px 0 12px 0;
+    }
+
+    .metric-card {
+        background: linear-gradient(145deg, #151923, #10131a);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        min-height: 125px;
+    }
+
+    .metric-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 15px;
+    }
+
+    .metric-value {
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: var(--text);
+        overflow-wrap: anywhere;
+    }
+
+    .metric-foot {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 8px;
+    }
+
+    .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px;
+        margin-bottom: 16px;
+    }
+
+    .panel-title {
+        color: var(--text);
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+
+    .panel-copy {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+    }
+
+    .agent-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .agent-row:last-child {
+        border-bottom: none;
+    }
+
+    .agent-icon {
+        width: 39px;
+        height: 39px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #202635;
+        border-radius: 11px;
+        font-size: 19px;
+    }
+
+    .agent-name {
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .agent-desc {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 3px;
+    }
+
+    .tag {
+        display: inline-block;
+        padding: 5px 9px;
+        border-radius: 7px;
+        background: #1b2d23;
+        color: var(--accent);
+        font-size: 10px;
+        font-family: 'DM Mono', monospace;
+        letter-spacing: .5px;
+    }
+
+    .stButton > button {
+        border-radius: 10px;
+        min-height: 43px;
+        font-weight: 700;
+        border: 1px solid var(--border);
+        transition: all .15s ease;
+    }
+
+    .stButton > button[kind="primary"] {
+        background: var(--accent);
+        color: #0a1510;
+        border: none;
+    }
+
+    .stButton > button[kind="primary"]:hover {
+        background: #c2ffd2;
+        color: #0a1510;
+    }
+
+    .stTextArea textarea, .stTextInput input {
+        background: #0d1017;
+        border-color: var(--border);
+        color: var(--text);
+        border-radius: 10px;
+    }
+
+    code, pre, .stCode {
+        font-family: 'DM Mono', monospace !important;
+    }
+
+    div[data-testid="stExpander"] {
+        border-color: var(--border);
+        border-radius: 12px;
+        background: #10131a;
+    }
+
+    hr {
+        border-color: var(--border);
+    }
+
+    footer {
+        visibility: hidden;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ------------------------------------------------------------
+# HELPERS
+# ------------------------------------------------------------
+
+def get_model() -> str:
+    if not AGENT_FILE.exists():
+        return "Unknown"
+
+    try:
+        source = AGENT_FILE.read_text(encoding="utf-8")
+        match = re.search(
+            r'^MODEL\s*=\s*os\.getenv\(\s*["\']AGENTLAB_MODEL["\']\s*,\s*["\']([^"\']+)["\']',
+            source,
+            re.MULTILINE,
+        )
+        return os.getenv("AGENTLAB_MODEL", match.group(1) if match else "Unknown")
+    except Exception:
+        return "Unknown"
+
+
+def get_ollama_status() -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return False, "Ollama unavailable"
+
+        model = get_model()
+        installed = any(
+            line.split() and line.split()[0] == model
+            for line in result.stdout.splitlines()[1:]
+        )
+
+        if installed:
+            return True, f"{model} ready"
+
+        return False, f"{model} not installed"
+    except Exception:
+        return False, "Ollama unavailable"
+
+
+def get_reports() -> list[dict]:
+    reports = []
+
+    for path in sorted(
+        RUNS.glob("run-*.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    ):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["_path"] = str(path)
+            data["_modified"] = path.stat().st_mtime
+            reports.append(data)
+        except Exception:
+            continue
+
+    return reports
+
+
+def run_command(command: list[str], timeout: int = 120) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={
+                **os.environ,
+                "PYTHONUNBUFFERED": "1",
+            },
+        )
+        output = result.stdout
+
+        if result.stderr:
+            output += "\n--- STDERR ---\n" + result.stderr
+
+        return result.returncode, output or "(No output)"
+    except subprocess.TimeoutExpired as exc:
+        output = "Command timed out."
+        if exc.stdout:
+            output += "\n" + str(exc.stdout)
+        if exc.stderr:
+            output += "\n" + str(exc.stderr)
+        return 124, output
+    except Exception as exc:
+        return 1, f"{type(exc).__name__}: {exc}"
+
+
+def metric(label: str, value: str, foot: str) -> str:
+    return f"""
+    <div class="metric-card">
+        <div class="metric-label">{label}</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-foot">{foot}</div>
+    </div>
+    """
+
+
+# ------------------------------------------------------------
+# SIDEBAR
+# ------------------------------------------------------------
+
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="brand">
+            <div class="brand-icon">λ</div>
+            <div>
+                <div class="brand-title">AgentLab</div>
+                <div class="brand-subtitle">Local AI Engineering</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    page = st.radio(
+        "WORKSPACE",
+        [
+            "Overview",
+            "Run Agents",
+            "Quality & Tests",
+            "Run History",
+            "Project Files",
+        ],
+        label_visibility="visible",
+    )
+
+    st.divider()
+
+    ollama_ready, ollama_message = get_ollama_status()
+
+    st.markdown("**LOCAL MODEL**")
+    if ollama_ready:
+        st.success(ollama_message)
+    else:
+        st.warning(ollama_message)
+
+    st.caption("Inference stays on your machine with Ollama.")
+    st.caption("AgentLab · Local development edition")
+
+
+# ------------------------------------------------------------
+# SHARED DATA
+# ------------------------------------------------------------
+
+reports = get_reports()
+latest = reports[0] if reports else {}
+
+tests_exist = (TESTS / "test_solution.py").exists()
+solution_exists = (WORKSPACE / "solution.py").exists()
+
+latest_status = (
+    "SUCCESS" if latest.get("success")
+    else "FAILED" if latest
+    else "NOT RUN"
+)
+
+# ------------------------------------------------------------
+# PAGE: OVERVIEW
+# ------------------------------------------------------------
+
+if page == "Overview":
+    st.markdown('<div class="eyebrow">LOCAL AI SOFTWARE FACTORY</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="hero-title">Build. Test. <span>Improve.</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        <div class="hero-copy">
+            A multi-agent engineering workspace where specialized AI roles
+            plan implementations, write Python, execute real tests, review
+            evidence, and attempt repairs — powered by your local model.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.markdown(
+            metric("LOCAL MODEL", get_model(), "Ollama inference"),
+            unsafe_allow_html=True,
+        )
+
+    with c2:
+        st.markdown(
+            metric("TOTAL RUNS", str(len(reports)), "Saved execution reports"),
+            unsafe_allow_html=True,
+        )
+
+    with c3:
+        passed_runs = sum(1 for report in reports if report.get("success"))
+        st.markdown(
+            metric("APPROVED RUNS", str(passed_runs), "QA + reviewer approved"),
+            unsafe_allow_html=True,
+        )
+
+    with c4:
+        st.markdown(
+            metric("LATEST RESULT", latest_status, "Most recent run"),
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="section-label">ENGINEERING WORKFLOW</div>', unsafe_allow_html=True)
+
+    left, right = st.columns([1.25, 1])
+
+    with left:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">Your agent team</div>
+                <div class="panel-copy">Each role contributes to one shared engineering workflow.</div>
+                <div class="agent-row">
+                    <div class="agent-icon">🧭</div>
+                    <div><div class="agent-name">Project Manager</div>
+                    <div class="agent-desc">Breaks the task into requirements and acceptance criteria.</div></div>
+                </div>
+                <div class="agent-row">
+                    <div class="agent-icon">⌘</div>
+                    <div><div class="agent-name">Python Developer</div>
+                    <div class="agent-desc">Writes the implementation and attempts evidence-based repairs.</div></div>
+                </div>
+                <div class="agent-row">
+                    <div class="agent-icon">◉</div>
+                    <div><div class="agent-name">QA Engineer</div>
+                    <div class="agent-desc">Executes pytest against the actual project tests.</div></div>
+                </div>
+                <div class="agent-row">
+                    <div class="agent-icon">✓</div>
+                    <div><div class="agent-name">Code Reviewer</div>
+                    <div class="agent-desc">Reviews the implementation and test evidence.</div></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with right:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">System health</div>
+                <div class="panel-copy">Local runtime and project readiness.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        checks = [
+            ("AgentLab source", AGENT_FILE.exists()),
+            ("Ollama model", ollama_ready),
+            ("Test suite", tests_exist),
+            ("Solution file", solution_exists),
+        ]
+
+        for label, ok in checks:
+            if ok:
+                st.success(f"✓  {label}")
+            else:
+                st.error(f"✕  {label}")
+
+        if st.button("Open agent controls →", type="primary", use_container_width=True):
+            st.session_state["page_hint"] = "Run Agents"
+            st.info("Choose **Run Agents** in the sidebar.")
+
+    if latest:
+        st.markdown('<div class="section-label">LATEST EXECUTION</div>', unsafe_allow_html=True)
+
+        lcol, rcol = st.columns([1, 2])
+
+        with lcol:
+            st.markdown(
+                f"**Result:** {'🟢 SUCCESS' if latest.get('success') else '🔴 NOT APPROVED'}"
+            )
+            st.caption(Path(latest["_path"]).name)
+            st.caption(
+                f"Duration: {latest.get('elapsed_seconds', '—')} seconds"
+            )
+
+        with rcol:
+            st.code(
+                str(latest.get("test_output", "No test output saved."))[-3500:],
+                language="text",
+            )
+
+
+# ------------------------------------------------------------
+# PAGE: RUN AGENTS
+# ------------------------------------------------------------
+
+elif page == "Run Agents":
+    st.markdown('<div class="eyebrow">EXECUTION CONTROL</div>', unsafe_allow_html=True)
+    st.title("Run AgentLab")
+    st.markdown(
+        "Start the local multi-agent workflow. The current task is defined in "
+        "`agentlab.py`; this dashboard runs it without changing your task or tests."
+    )
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">Execution pipeline</div>
+            <div class="panel-copy">
+                Manager → Developer → Pytest QA → Reviewer → Repair loop
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("View current task", expanded=True):
+        if AGENT_FILE.exists():
+            source = AGENT_FILE.read_text(encoding="utf-8")
+            match = re.search(
+                r'^TASK\s*=\s*"""(.*?)"""',
+                source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            st.text(match.group(1).strip() if match else "Could not extract TASK from agentlab.py.")
+        else:
+            st.error("agentlab.py not found.")
+
+    st.warning(
+        "Running agents may overwrite workspace/solution.py. "
+        "Your current solution should be backed up before execution."
+    )
+
+    confirm = st.checkbox(
+        "I understand that the developer agent may replace workspace/solution.py."
+    )
+
+    if st.button(
+        "⚡  Start AgentLab",
+        type="primary",
+        disabled=not confirm or not AGENT_FILE.exists(),
+        use_container_width=True,
+    ):
+        solution = WORKSPACE / "solution.py"
+        backup_path = None
+
+        if solution.exists():
+            backup_dir = RUNS / "ui-backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_path = backup_dir / (
+                f"solution-{datetime.now().strftime('%Y%m%d-%H%M%S')}.py"
+            )
+            backup_path.write_bytes(solution.read_bytes())
+
+        with st.status("AgentLab is working...", expanded=True) as status:
+            st.write("Starting local workflow...")
+            st.write(f"Model: `{get_model()}`")
+            st.write("Agents are running sequentially; this may take a few minutes.")
+
+            with st.spinner("Waiting for the workflow to complete..."):
+                code, output = run_command(
+                    [sys.executable, "-u", str(AGENT_FILE)],
+                    timeout=900,
+                )
+
+            st.session_state["last_agent_output"] = output
+            st.session_state["last_agent_exit_code"] = code
+            st.session_state["last_agent_backup"] = (
+                str(backup_path) if backup_path else ""
+            )
+
+            if code == 0:
+                status.update(label="AgentLab process finished", state="complete")
+            else:
+                status.update(label="AgentLab process exited with an error", state="error")
+
+        if backup_path:
+            st.info(f"Previous solution backed up to `{backup_path}`.")
+
+        if code == 0:
+            st.success("AgentLab process completed. Check the report below for the actual QA result.")
+        else:
+            st.error(f"AgentLab exited with code {code}.")
+
+    if "last_agent_output" in st.session_state:
+        st.markdown("### Execution output")
+        st.code(st.session_state["last_agent_output"][-12000:], language="text")
+
+        if st.session_state.get("last_agent_exit_code", 1) != 0:
+            st.error("The process failed. Review the terminal output above.")
+
+        if st.session_state.get("last_agent_backup"):
+            st.caption(
+                "Backup: " + st.session_state["last_agent_backup"]
+            )
+
+
+# ------------------------------------------------------------
+# PAGE: QUALITY AND TESTS
+# ------------------------------------------------------------
+
+elif page == "Quality & Tests":
+    st.markdown('<div class="eyebrow">DETERMINISTIC QUALITY GATE</div>', unsafe_allow_html=True)
+    st.title("Quality & Tests")
+    st.markdown(
+        "Run the test suite independently of the AI agents. "
+        "A reviewer decision is not a substitute for passing tests."
+    )
+
+    if not tests_exist:
+        st.error("tests/test_solution.py was not found.")
+    else:
+        st.success("Test suite found: `tests/test_solution.py`")
+
+    if solution_exists:
+        st.success("Implementation found: `workspace/solution.py`")
+    else:
+        st.warning("No implementation found at `workspace/solution.py`.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("▶ Run pytest", type="primary", use_container_width=True):
+            with st.spinner("Running pytest..."):
+                code, output = run_command(
+                    [sys.executable, "-m", "pytest", "-q", str(TESTS / "test_solution.py")],
+                    timeout=120,
+                )
+
+            st.session_state["last_test_output"] = output
+            st.session_state["last_test_exit_code"] = code
+
+    with col2:
+        if st.button("Inspect solution.py", use_container_width=True):
+            solution = WORKSPACE / "solution.py"
+            if solution.exists():
+                st.session_state["show_solution"] = True
+            else:
+                st.error("workspace/solution.py does not exist.")
+
+    if "last_test_output" in st.session_state:
+        if st.session_state.get("last_test_exit_code") == 0:
+            st.success("All tests passed.")
+        else:
+            st.error("Tests failed. Use the traceback to identify the failing behavior.")
+
+        st.code(st.session_state["last_test_output"][-12000:], language="text")
+
+    if st.session_state.get("show_solution"):
+        solution = WORKSPACE / "solution.py"
+        if solution.exists():
+            st.markdown("### Current implementation")
+            st.code(solution.read_text(encoding="utf-8"), language="python")
+
+    if solution_exists:
+        with st.expander("Current solution file details"):
+            solution = WORKSPACE / "solution.py"
+            st.write(f"Path: `{solution}`")
+            st.write(f"Size: {solution.stat().st_size:,} bytes")
+            st.write(
+                "Last modified: "
+                + datetime.fromtimestamp(
+                    solution.stat().st_mtime
+                ).strftime("%Y-%m-%d %H:%M:%S")
+            )
+
+
+# ------------------------------------------------------------
+# PAGE: RUN HISTORY
+# ------------------------------------------------------------
+
+elif page == "Run History":
+    st.markdown('<div class="eyebrow">OBSERVABILITY</div>', unsafe_allow_html=True)
+    st.title("Run History")
+    st.markdown("Inspect saved JSON reports from previous agent executions.")
+
+    reports = get_reports()
+
+    if not reports:
+        st.info("No reports yet. Run AgentLab to generate your first report.")
+    else:
+        rows = []
+
+        for report in reports:
+            rows.append(
+                {
+                    "Result": "SUCCESS" if report.get("success") else "NOT APPROVED",
+                    "Model": report.get("model", "Unknown"),
+                    "Tests": "PASS" if report.get("tests_passed") else "FAIL",
+                    "Reviewer": "PASS" if report.get("review_approved") else "FAIL",
+                    "Revisions": report.get("revisions", 0),
+                    "Duration (s)": report.get("elapsed_seconds", "—"),
+                    "Report": Path(report["_path"]).name,
+                }
+            )
+
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+        selected = st.selectbox(
+            "Select a report",
+            options=reports,
+            format_func=lambda report: Path(report["_path"]).name,
+        )
+
+        if selected:
+            st.markdown("### Report details")
+
+            a, b, c = st.columns(3)
+
+            with a:
+                st.metric(
+                    "Final result",
+                    "SUCCESS" if selected.get("success") else "NOT APPROVED",
+                )
+
+            with b:
+                st.metric(
+                    "Tests",
+                    "PASS" if selected.get("tests_passed") else "FAIL",
+                )
+
+            with c:
+                st.metric("Revisions", selected.get("revisions", 0))
+
+            with st.expander("Task"):
+                st.write(selected.get("task", "No task saved."))
+
+            with st.expander("QA output", expanded=True):
+                st.code(selected.get("test_output", ""), language="text")
+
+            with st.expander("Reviewer feedback"):
+                st.code(selected.get("final_review", ""), language="text")
+
+            with st.expander("Agent event log"):
+                st.json(selected.get("events", []))
+
+            with st.expander("Complete JSON report"):
+                st.json(
+                    {
+                        key: value
+                        for key, value in selected.items()
+                        if not key.startswith("_")
+                    }
+                )
+
+
+# ------------------------------------------------------------
+# PAGE: PROJECT FILES
+# ------------------------------------------------------------
+
+elif page == "Project Files":
+    st.markdown('<div class="eyebrow">PROJECT EXPLORER</div>', unsafe_allow_html=True)
+    st.title("Project Files")
+    st.markdown("Inspect key project files without leaving the dashboard.")
+
+    file_options = {
+        "AgentLab workflow": AGENT_FILE,
+        "Current solution": WORKSPACE / "solution.py",
+        "Pytest suite": TESTS / "test_solution.py",
+    }
+
+    selected_name = st.selectbox("Choose a file", list(file_options.keys()))
+    selected_path = file_options[selected_name]
+
+    if selected_path.exists():
+        content = selected_path.read_text(encoding="utf-8", errors="replace")
+        st.caption(f"`{selected_path}` · {len(content):,} characters")
+
+        language = "python"
+        if selected_path.suffix == ".json":
+            language = "json"
+
+        st.code(content, language=language)
+
+        st.download_button(
+            "Download this file",
+            data=content,
+            file_name=selected_path.name,
+            mime="text/plain",
+        )
+    else:
+        st.warning(f"File not found: {selected_path}")
+
+    st.markdown("### Workspace contents")
+
+    for folder in (WORKSPACE, TESTS, RUNS):
+        with st.expander(str(folder.relative_to(ROOT))):
+            files = sorted(folder.iterdir(), key=lambda item: item.name) if folder.exists() else []
+
+            if not files:
+                st.caption("Empty")
+            else:
+                for item in files[:100]:
+                    icon = "📁" if item.is_dir() else "📄"
+                    st.write(f"{icon} {item.name}")
+
+
+# ------------------------------------------------------------
+# FOOTER
+# ------------------------------------------------------------
+
+st.divider()
+st.markdown(
+    """
+    <div style="text-align:center;color:#737d91;font-size:11px;padding:8px 0;">
+        AGENTLAB · LOCAL-FIRST AI ENGINEERING · OLLAMA + LANGGRAPH + PYTEST
+    </div>
+    """,
+    unsafe_allow_html=True,
+)

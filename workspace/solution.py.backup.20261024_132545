@@ -1,0 +1,57 @@
+import csv
+import re
+
+def analyze_csv(csv_content: str) -> dict:
+    if not csv_content:
+        return {
+            "total_rows": 0,
+            "missing_required_fields": [],
+            "duplicate_ids": [],
+            "invalid_emails": [],
+            "error": "Empty input"
+        }
+
+    try:
+        reader = csv.DictReader(csv_content.splitlines())
+    except csv.Error as e:
+        return {
+            "total_rows": 0,
+            "missing_required_fields": [],
+            "duplicate_ids": [],
+            "invalid_emails": [],
+            "error": f"Malformed CSV: {str(e)}"
+        }
+
+    required_headers = {"id", "name", "email"}
+    missing_required_fields = []
+    duplicate_ids = {}
+    invalid_emails = []
+
+    for row_number, row in enumerate(reader, start=2):
+        if not all(row.get(header) for header in required_headers):
+            missing_required_fields.append({
+                "row_number": row_number,
+                "missing_fields": [header for header in required_headers if not row.get(header)]
+            })
+
+        if row.get("id") in duplicate_ids:
+            duplicate_ids[row.get("id")].append(row_number)
+        else:
+            duplicate_ids[row.get("id")] = [row_number]
+
+        if row.get("email"):
+            if not re.match(r"[^@]+@[^@]+\.[^@]+", row.get("email")):
+                invalid_emails.append({
+                    "row_number": row_number,
+                    "invalid_email": row.get("email")
+                })
+
+    total_rows = len(list(reader))  # Convert DictReader to list to get row count
+
+    return {
+        "total_rows": total_rows,
+        "missing_required_fields": missing_required_fields,
+        "duplicate_ids": [{"id": id, "rows": rows} for id, rows in duplicate_ids.items()],
+        "invalid_emails": invalid_emails,
+        "error": None
+    }
