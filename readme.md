@@ -53,6 +53,12 @@ To run the agent workflow without the dashboard:
 python agentlab.py
 ```
 
+To run the acceptance tests independently:
+
+```bash
+python -m pytest -v
+```
+
 ## Project layout
 
 ```text
@@ -64,7 +70,7 @@ AgentLab/
 ├── tests/
 │   └── test_solution.py   # Acceptance tests
 ├── workspace/
-│   └── solution.py        # Generated implementation
+│   └── solution.py        # Baseline/generated implementation
 └── runs/                  # Local reports and backups
 ```
 
@@ -75,6 +81,8 @@ AgentLab/
 - Failed pytest runs block reviewer approval. The bounded repair loop is an attempt, not a guarantee.
 - Generated code is executed locally. Review changes and only run tasks and prompts you trust.
 - Run reports, generated code, and backups are runtime artifacts; keep them local unless you deliberately want to version them.
+- Streamlit is included as an explicit runtime dependency. The agent itself requires an Ollama server and the selected model.
+- The dashboard can be hosted as a UI, but the agent workflow will not work on a cloud host while Ollama is only running on your laptop. A deployment needs a reachable Ollama server (or a deliberate remote-model integration) and the corresponding secure configuration.
 
 ## Roadmap
 
@@ -82,6 +90,7 @@ AgentLab/
 - [ ] Support configurable test commands and acceptance criteria
 - [ ] Add richer run comparison and evaluation metrics
 - [ ] Add project templates beyond the current Python task
+- [ ] Add a hosted inference configuration for cloud deployments
 
 ## License
 
