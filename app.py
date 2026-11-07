@@ -241,20 +241,19 @@ with st.sidebar:
 
     ollama_status = st.empty()
     if st.button("Check Ollama", use_container_width=True):
-        result = subprocess.run(
-            ["ollama", "list"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        ) if __import__("shutil").which("ollama") else None
-
-        if result and result.returncode == 0:
-            ollama_status.success("Ollama is responding")
-            ollama_status.code(result.stdout[:1500])
-        elif result:
-            ollama_status.error(result.stderr or "Ollama returned an error")
-        else:
-            ollama_status.error("Ollama CLI was not found")
+        try:
+            import ollama
+            endpoint = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            client = ollama.Client(host=endpoint, timeout=10)
+            result = client.list()
+            ollama_status.success(f"Ollama is responding at {endpoint}")
+            models = result.get("models", []) if isinstance(result, dict) else result.models
+            ollama_status.code("\\n".join(
+                getattr(model, "model", None) or model.get("name", "Unknown model")
+                for model in models
+            ) or "No models are currently available.")
+        except Exception as exc:
+            ollama_status.error(f"Could not reach Ollama: {type(exc).__name__}: {exc}")
 
     st.caption("Python · LangGraph · Ollama")
 
