@@ -1,1 +1,13 @@
-[server]\nheadless = true\n\n[browser]\ngatherUsageStats = false\n\n[theme]\nbase = "dark"\nprimaryColor = "#9cf6c8"\nbackgroundColor = "#0b0d12"\nsecondaryBackgroundColor = "#131722"\ntextColor = "#edf0f6"\nfont = "sans serif"\n
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#9cf6c8"
+backgroundColor = "#0b0d12"
+secondaryBackgroundColor = "#131722"
+textColor = "#edf0f6"
+font = "sans serif"
