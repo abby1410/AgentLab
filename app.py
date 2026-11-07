@@ -236,14 +236,21 @@ with st.sidebar:
     st.divider()
     st.markdown("**Runtime**")
 
-    model = os.getenv("MODEL", "qwen2.5-coder:3b")
-    st.code(model)
+    try:
+        configured_model = st.secrets.get("AGENTLAB_MODEL", "qwen2.5-coder:3b")
+        ollama_host = st.secrets.get("OLLAMA_HOST", os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+    except Exception:
+        configured_model = os.getenv("AGENTLAB_MODEL", "qwen2.5-coder:3b")
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+    st.code(configured_model)
+    st.caption(f"Ollama endpoint: {ollama_host}")
 
     ollama_status = st.empty()
     if st.button("Check Ollama", use_container_width=True):
         try:
             import ollama
-            endpoint = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            endpoint = ollama_host
             client = ollama.Client(host=endpoint, timeout=10)
             result = client.list()
             ollama_status.success(f"Ollama is responding at {endpoint}")
@@ -386,7 +393,7 @@ elif page == "Run Agents":
                 [sys.executable, "-u", "agentlab.py"],
                 env={
                     "AGENTLAB_TASK": task,
-                    "AGENTLAB_NOTES": notes,
+                    "AGENTLAB_NOTES": notes,\n                    "AGENTLAB_MODEL": configured_model,\n                    "OLLAMA_HOST": ollama_host,
                 },
             )
             elapsed = time.time() - started
